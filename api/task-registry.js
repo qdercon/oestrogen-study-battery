@@ -21,7 +21,7 @@ export const TaskRegistry = {
         task_name: "pilt",
         n_choices: 2,
         valence: "mixed",
-        present_pavlovian: true,
+        present_pavlovian: false,
         include_instructions: true,
         sequence: 'wk0',
         session: 'wk0'
