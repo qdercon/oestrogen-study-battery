@@ -1,7 +1,7 @@
 import { loadSequence, loadCSS, bonusTrial } from '@utils/index.js';
 import { TaskRegistry, globalConfig, globalConfigOptions } from './task-registry.js';
 import { messages } from './messages.js';
-import { ModuleRegistry } from './module-registry.js';
+import { ModuleRegistryPILTWM } from './module-registry.js';
 
 /**
  * Get a task from the registry with global config merged
@@ -201,11 +201,11 @@ export function getMessage(moduleName, messageKey, settings={}) {
  * @returns {Object} Module object
  */
 export function getModule(moduleName) {
-  if (!(moduleName in ModuleRegistry)) {
-    throw new Error(`Module "${moduleName}" not found. Available modules: ${Object.keys(ModuleRegistry).join(', ')}`);
+  if (!(moduleName in ModuleRegistryPILTWM)) {
+    throw new Error(`Module "${moduleName}" not found. Available modules: ${Object.keys(ModuleRegistryPILTWM).join(', ')}`);
   }
 
-  let module = ModuleRegistry[moduleName];
+  let module = ModuleRegistryPILTWM[moduleName];
 
   return module;
 }
@@ -250,7 +250,7 @@ export async function createModuleTimeline(moduleName, config) {
  * @returns {Array<string>} Array of module names
  */
 export function listModules() {
-  return Object.keys(ModuleRegistry);
+  return Object.keys(ModuleRegistryPILTWM);
 }
 
 /**
@@ -259,7 +259,7 @@ export function listModules() {
  * @returns {string} Formatted information string about the module
  */
 export function getModuleInfo(moduleName) {
-    const module = ModuleRegistry[moduleName];
+    const module = ModuleRegistryPILTWM[moduleName];
     if (!module) {
         return `Module "${moduleName}" not found in registry.`;
     }
