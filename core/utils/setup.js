@@ -181,8 +181,10 @@ const enterExperiment = {
             n_warnings: 0
         })
 
-        // Prevent participant from terminating experiment unless in debug mode
-        if (!window.debug) {
+        // Prevent participant from terminating experiment, except in debug or
+        // simulated runs where blocking refresh and right-click just gets in the
+        // way of the person testing.
+        if (!window.debug && !window.simulating) {
             preventParticipantTermination();
         }
     }

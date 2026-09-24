@@ -100,7 +100,14 @@ Two magic strings in `participant_id` change behaviour ([experiment.html](experi
 - **`debug`** — no fullscreen enforcement, no navigation blocking. Also flags the
   session document with `is_debug: true`.
 - **`simulate`** — jsPsych auto-plays the whole battery. Writes are logged to the
-  console instead of hitting Firestore, *unless* you add `&firebase=1`.
+  console instead of hitting Firestore, *unless* you add `&firebase=1`. A simulated
+  run also skips the fullscreen switch, leaves refresh and right-click unblocked,
+  and drops the experimenter-gated break screen.
+
+The bonus screen still waits for `p`, even when simulating. That keypress is what
+triggers `endExperiment()` — the CSV download and the final session write — so if you
+only wanted to watch the battery play through, close the tab instead and nothing is
+saved or downloaded.
 
 ```
 # dry run, nothing written to Firestore

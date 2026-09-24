@@ -44,9 +44,10 @@ export const messages = {
             ];
         },
         break_message: {
-            message: `<p>You can now take a short break.</p><p>Please ring the bell when you are ready to continue.</p>`,
+            message: `<p>You can now take a short break.</p><p>Please let the experimenter know when you are ready to continue.</p>`,
             key_forward: 'c',
-            show_clickable_nav: false
+            show_clickable_nav: false,
+            skip_when_simulating: true
         }
     }
 }

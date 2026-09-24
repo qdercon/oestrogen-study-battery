@@ -38,7 +38,9 @@ function preventParticipantTermination() {
 
   // Function that checks for fullscreen
 function check_fullscreen(){
-    if (window.debug){
+    // Simulated runs never enter fullscreen in the first place, so there is
+    // nothing to police.
+    if (window.debug || window.simulating){
         return false
     }
 
@@ -181,8 +183,9 @@ function kickOut(settings) {
  * @returns {boolean} True if user has exited fullscreen, false otherwise
  */
 function checkFullscreen(){
-    // Skip fullscreen check in debug mode
-    if (window.debug){
+    // Simulated runs never enter fullscreen in the first place, so there is
+    // nothing to police.
+    if (window.debug || window.simulating){
         return false
     }
 

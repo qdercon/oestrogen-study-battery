@@ -174,14 +174,13 @@ function bonusTrial(module) {
 
       flushData();
     },
-    // This trial deliberately waits for the experimenter to press "p", so it
-    // would stall a simulated run - and with it endExperiment(), which writes
-    // the local CSV and finalises the session. Simulate it away whenever the
-    // run is itself simulated, or in local development.
+    // Never auto-advanced, including in a simulated run: pressing "p" is the
+    // deliberate act of finishing the session. Everything that ends a session
+    // hangs off it - endExperiment() downloads the local CSV and finalises the
+    // session document - so a run parked here can still be abandoned by simply
+    // closing the tab, leaving no download and no completed session.
     simulation_options: {
-      simulate: Boolean(window.simulating) ||
-        window.location.hostname === 'localhost' ||
-        window.location.hostname === '127.0.0.1'
+      simulate: false
     }
   };
 }

@@ -146,6 +146,10 @@ export function getTaskInfo(taskName) {
  * @returns {Object} Instruction trial configuration object for jsPsych
  */
 function instructionTrial(message, ...additionalArgs) {
+    // skip_when_simulating is ours, not a jsPsych parameter, so keep it out of
+    // the trial object.
+    const { skip_when_simulating, ...overrides } = additionalArgs[0] || {};
+
     // Default configuration for instruction trials
     let defaultArgs = {
         css_classes: ['instructions'], // Apply instructions CSS styling
@@ -158,8 +162,18 @@ function instructionTrial(message, ...additionalArgs) {
         type: jsPsychInstructions,     // Use jsPsych instructions plugin
         pages: message,                // Set the instruction pages content
         ...defaultArgs,                // Apply default configuration
-        ...additionalArgs[0]           // Override with any additional arguments
+        ...overrides                   // Override with any additional arguments
     };
+
+    // Screens that wait on an experimenter keypress have nobody to press it in a
+    // simulated run, so they are dropped from the timeline entirely when one is
+    // in progress.
+    if (skip_when_simulating) {
+        return {
+            timeline: [baseObject],
+            conditional_function: () => !window.simulating
+        };
+    }
 
     return baseObject;
 }

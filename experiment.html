@@ -152,11 +152,12 @@
                     fullscreen_mode: false
                 };
 
-                // Debug runs skip the fullscreen switch but keep the trial, so
-                // URL parameters and the warning counter are still recorded.
-                // fullscreen_mode:false renders no button, so there is
-                // nothing for a simulated run to click - skip simulating it.
-                const startTrial = window.debug
+                // Debug and simulated runs skip the fullscreen switch but keep
+                // the trial, so URL parameters and the warning counter are still
+                // recorded. fullscreen_mode:false renders no button, so there is
+                // nothing for a simulated run to click - skip simulating it and
+                // let the plugin end the trial on its own timer.
+                const startTrial = (window.debug || window.simulating)
                     ? { ...enterExperiment, fullscreen_mode: false,
                         simulation_options: { simulate: false } }
                     : enterExperiment;
