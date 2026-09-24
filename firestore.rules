@@ -1,0 +1,17 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Document IDs are the participant's anonymous auth UID, so each
+    // participant can only touch their own documents. Reads for analysis go
+    // through the Admin SDK, which bypasses these rules entirely.
+    match /pilt-wm-main/tasks/{task}/{userID} {
+      allow read, update, delete: if request.auth.uid == userID;
+      allow create: if request.auth.uid == userID;
+    }
+    match /pilt-wm-test/tasks/{task}/{userID} {
+      allow read, update, delete: if request.auth.uid == userID;
+      allow create: if request.auth.uid == userID;
+    }
+  }
+}

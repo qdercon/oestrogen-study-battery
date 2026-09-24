@@ -15,3 +15,9 @@ test-results/
 /playwright/.cache/
 # Ignore vscode files
 launch.json
+
+# Ignore firebase admin sdk service account key
+oestrogen-project-*.json
+.firebase/
+serviceAccountKey*.json
+*-firebase-adminsdk-*.json

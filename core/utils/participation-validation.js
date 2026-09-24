@@ -1,4 +1,4 @@
-import { saveDataREDCap } from './data-handling.js';
+import { flushData } from './data-handling.js';
 
 /**
  * Participation validation and warning system utilities
@@ -38,7 +38,7 @@ function preventParticipantTermination() {
 
   // Function that checks for fullscreen
 function check_fullscreen(){
-    if (window.debug || window.context === "relmed"){
+    if (window.debug){
         return false
     }
 
@@ -116,7 +116,7 @@ function preKickOutWarning(settings) {
                 `,
                 on_start: function(trial) {
                     // Save data
-                    saveDataREDCap(3);
+                    flushData();
             }
             }
         ],
@@ -128,7 +128,6 @@ function preKickOutWarning(settings) {
 }
 /**
  * Context-specific kick-out warning configuration
- * Different behavior for RELMED vs Prolific participants
  */
 function kickOutWarning(settings)  {
     return {
@@ -177,61 +176,13 @@ function kickOut(settings) {
 }
 
 /**
- * Creates instruction-based kick-out trial for participants who fail comprehension checks
- * Only applies to Prolific context (RELMED participants get more chances)
- * @param {string} task - Task name for tracking instruction failures
- * @returns {Object|undefined} jsPsych trial object or undefined for RELMED context
- */
-
-const createInstructionsKickOut = (task) => {
-    if (window.context == "relmed") {
-        return undefined;
-    } else {
-        return {
-            type: jsPsychHtmlKeyboardResponse,
-            conditional_function: function () {
-                if (jsPsych.data.get().last(1).select(`${task}_instruction_fail`).values[0] >= window.max_instruction_fails) {
-                    return true;
-                } else {
-                    return false;
-                }
-            },
-            css_classes: ['instructions'],
-            timeline: [
-                {
-                    stimulus: '...',
-                    trial_duration: 200,
-                    on_finish: function (data) {
-                        // Save data
-                        saveDataREDCap(3);
-                        // Allow refresh
-                        window.removeEventListener('beforeunload', preventRefresh);
-                    }
-                },
-                {
-                    stimulus: `<p>Thank you for your time—unfortunately, it seems that the instructions weren’t fully understood, so we won’t be able to proceed with the experiment.</p>
-                    <p>If you believe this is a mistake, please email haoyang.lu@ucl.ac.uk, explaining the circumstances.</p>
-                    <p>Please return this study on <a href="https://app.prolific.com/">Prolific</a>.</p>
-                    <p>You may now close this tab.</p>
-                `
-                }
-            ],
-            choices: ["NO_KEYS"],
-            data: {
-                trialphase: 'kick-out'
-            }
-        }
-    }
-}
-
-/**
  * Checks if the browser is currently in fullscreen mode
  * Used to enforce fullscreen participation in experiments
  * @returns {boolean} True if user has exited fullscreen, false otherwise
  */
 function checkFullscreen(){
-    // Skip fullscreen check in debug mode or RELMED context
-    if (window.debug || window.context === "relmed"){
+    // Skip fullscreen check in debug mode
+    if (window.debug){
         return false
     }
 
@@ -263,7 +214,6 @@ function checkFullscreen(){
  *    (default is the last trial, useful for pre-trial computations; change to 2 for post-trial computations). This is determined either by:
  *  a. The last trial's `trialphase` is `"no_choice_warning"` (used for tasks with external warning messages).
  *  b. Checking data field `"response_deadline_warning"` for the last task trial (used for tasks with interal warning messages).
- * 5. If `window.context` is `"prolific"`, a warning is always allowed, overriding other conditions.
  *
  * @param {string} task - The name of the task, used to track task-specific warnings.
  * @param {number} [warning_expected_n_back=1] - The number of trials back to check 
@@ -470,7 +420,6 @@ export {
     preventRefresh,
     fullscreen_prompt,
     kickOut,
-    createInstructionsKickOut,
     checkFullscreen,
     canBeWarned,
     showTemporaryWarning,

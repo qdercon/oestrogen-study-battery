@@ -4,6 +4,8 @@
  */
 
 // Import and re-export all utility modules
+export * from './firebase.js';
+export * from './saveData.js';
 export * from './bonus.js';
 export * from './calculations.js';
 export * from './data-handling.js';

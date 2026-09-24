@@ -9,7 +9,6 @@ import {
   adjustStimuliPaths,
   buildPostLearningTest
 } from './utils.js';
-import { PAV_TEST_JSON } from './sequences/trial1_pavlovian_test.js';
 import { 
   updateState,
   computeBestRest,
@@ -107,30 +106,8 @@ export function createPostLearningTestTimeline(settings) {
   // Parse test structure based on task type
   let test_structure;
   if (settings.task_name === "pilt_test") {
-    console.log("here")
     test_structure = typeof PILT_test_json !== "undefined" ? JSON.parse(PILT_test_json) : null;
-    let pav_test_structure = typeof PAV_TEST_JSON !== "undefined" ? JSON.parse(PAV_TEST_JSON) : null;
-    
-    // Adjust stimulus paths for main test
     adjustStimuliPaths(test_structure, 'card-choosing/stimuli');
-    
-    // Process and add pavlovian test if available
-    if (pav_test_structure) {
-      pav_test_structure.forEach(trial => {
-        // Set pavlovian-specific paths and properties
-        trial.stimulus_left = `./assets/images/pavlovian-stims/${settings.session}/${trial.stimulus_left}`;
-        trial.stimulus_right = `./assets/images/pavlovian-stims/${settings.session}/${trial.stimulus_right}`;
-        trial.block = "pavlovian";
-        trial.feedback_left = trial.magnitude_left;
-        trial.feedback_right = trial.magnitude_right;
-        trial.EV_left = trial.magnitude_left;
-        trial.EV_right = trial.magnitude_right;
-        trial.optimal_right = trial.magnitude_right > trial.magnitude_left;
-      });
-      
-      // Prepend pavlovian test to main test
-      test_structure = [pav_test_structure].concat(test_structure);
-    }
   } else if (settings.task_name === "wm_test") {
     test_structure = typeof WM_test_json !== "undefined" ? JSON.parse(WM_test_json) : null;
     adjustStimuliPaths(test_structure, 'card-choosing/stimuli');
@@ -153,12 +130,25 @@ export function createPostLearningTestTimeline(settings) {
 }
 
 /**
- * Compute relative performance bonus for card choosing task
+ * Compute relative performance bonus for a card choosing task.
+ *
+ * Scoped to one task and its test phase: PILT is scored over "pilt" +
+ * "pilt_test", WM over "wm" + "wm_test". The test phases count because
+ * participants are told their coins still go to the safe even though the
+ * outcome is hidden (see testInstructions). Practice blocks are excluded by
+ * the numeric-block filter, since they use string block labels.
+ *
+ * @param {Object} settings - Task settings; settings.task_name selects the task
  * @returns {Object} Object with earned, min, and max possible scores
  */
-export const computeRelativeCardChoosingBonus = () => {
+export const computeRelativeCardChoosingBonus = (settings = {}) => {
+    const task_name = settings.task_name ?? "pilt";
+    const phases = [task_name, `${task_name}_test`];
+
     // Get all relevant trials: card choosing plugin with numeric blocks only
-    const trials = jsPsych.data.get().filter({trial_type: "card-choosing"}).filterCustom((trial) => {return typeof trial["block"] === "number"}).values();
+    const trials = jsPsych.data.get().filter({trial_type: "card-choosing"}).filterCustom((trial) => {
+        return typeof trial["block"] === "number" && phases.includes(trial["trialphase"]);
+    }).values();
 
     let max_sum = 0;
     let min_sum = 0;
@@ -180,7 +170,10 @@ export const computeRelativeCardChoosingBonus = () => {
     });
 
     // Compute the actual sum of coins
-    const earned_sum = jsPsych.data.get().filter({trial_type: "card-choosing"}).filterCustom((trial) => {return typeof trial["block"] === "number"}).select("chosen_feedback").sum();
+    const earned_sum = trials.reduce((sum, trial) => {
+        const f = trial.chosen_feedback;
+        return sum + (typeof f === "number" && !isNaN(f) ? f : 0);
+    }, 0);
 
     return {
         earned: earned_sum, 

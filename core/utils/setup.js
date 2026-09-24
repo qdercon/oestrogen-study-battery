@@ -3,8 +3,6 @@
  * Handles dynamic script loading and experiment launch coordination
  */
 
-// Import communication utility for sending messages to parent window
-import { postToParent } from './data-handling.js';
 import { preventParticipantTermination } from './participation-validation.js';
 
 /**
@@ -150,7 +148,6 @@ function createPreloadTrial(images, task_name) {
         },
         on_start: () => {
             console.log("load_successful");
-            postToParent({ message: "load_successful" });
         },
         continue_after_error: true
     };
@@ -185,7 +182,7 @@ const enterExperiment = {
         })
 
         // Prevent participant from terminating experiment unless in debug mode
-        if (!(window.participantID && window.participantID.includes("debug"))) {
+        if (!window.debug) {
             preventParticipantTermination();
         }
     }

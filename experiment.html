@@ -31,13 +31,6 @@
     
     <!-- Task-specific files -->
     <script src="tasks/card-choosing/plugin-card-choosing.js"></script>
-    <script src="tasks/control/plugins/plugin-explore-ship.js"></script>
-    <script src="tasks/control/plugins/plugin-explore-ship-feedback.js"></script>
-    <script src="tasks/control/plugins/plugin-predict-home-base.js"></script>
-    <script src="tasks/control/plugins/plugin-reward-ship.js"></script>
-    <script src="tasks/control/plugins/plugin-reward-prompt.js"></script>
-    <script src="tasks/reversal/plugin-reversal.js"></script>
-    <script src="tasks/open-text/plugin-open-text.js"></script>
 
     
     <!-- Core utilities -->
@@ -74,88 +67,125 @@
     <script type="module">
         // Import task registry functions
         import { createModuleTimeline, getModuleInfo } from '@api/index.js';
-        import { enterExperiment } from '@utils/index.js';
+        import { enterExperiment, initFirebase, initSaveData, saveTrial, endExperiment } from '@utils/index.js';
+
+        const MODULE_NAME = 'oestrogen_battery';
 
         // Get parameters from URL
-        window.participantID = new URLSearchParams(window.location.search).get('participant_id') || '';
-        window.simulating = window.participantID.includes("simulate") || false;
-        console.log(window.simulating);
+        const params = new URLSearchParams(window.location.search);
+        window.participantID = params.get('participant_id') || '';
+        window.session = params.get('session') || 'wk0';
+        window.module = MODULE_NAME;
+
+        // Simulated runs do not write to Firestore unless ?firebase=1 is set,
+        // so test runs cannot pollute the datastore.
+        window.simulating = window.participantID.includes("simulate");
+
+        // A "debug" participant ID relaxes the participation guards: no
+        // fullscreen enforcement, no navigation blocking. Read by
+        // core/utils/participation-validation.js.
+        window.debug = window.participantID.includes("debug");
+        const dryRun = window.simulating && params.get('firebase') !== '1';
 
         // Initialize jsPsych
         window.jsPsych = initJsPsych({
             display_element: 'display_element',
-            on_finish: function(data) {
-                // Display results
-                jsPsych.getDisplayElement().innerHTML = session == "screening" ? '<p>Thank you for participating! You may now close this tab.</p>' : '<p>Thank you for participating! Please call the experimenter.</p>';
+            // Fires once per trial, after that trial's own on_finish. This is
+            // the entire trial-to-trial persistence mechanism.
+            on_data_update: (data) => saveTrial(data),
+            // Runs after the last trial's data has been handed to
+            // on_data_update, so nothing is left unsaved.
+            on_finish: async function() {
+                const display = jsPsych.getDisplayElement();
+                display.innerHTML =
+                    '<p>Saving your data - please do not close this window.</p>';
+                try {
+                    await endExperiment();
+                } catch (error) {
+                    console.error('Error finalising session:', error);
+                }
+                display.innerHTML =
+                    '<p>Thank you for participating! Please call the experimenter.</p>';
             }
         });
-
-        // Configurations
-        window.session = new URLSearchParams(window.location.search).get('session') || 'wk0';
-        window.module = new URLSearchParams(window.location.search).get('module') ;
 
         const settings = {
             sequence: window.session,
             session: window.session
         };
 
+        function showError(heading, detail) {
+            jsPsych.getDisplayElement().innerHTML = `
+                <div style="text-align: center; padding: 50px;">
+                    <h2>${heading}</h2>
+                    <p><strong>${detail}</strong></p>
+                    <p>Please call the experimenter.</p>
+                </div>
+            `;
+        }
+
         // Function to run the experiment
         async function runExperiment() {
+            // Establish identity and the data sink before any trial can run.
             try {
-                // Which module to run
-                const module_name = 'oestrogen_battery';
+                await initFirebase(window.participantID, window.session);
+                await initSaveData({
+                    participantID: window.participantID,
+                    session: window.session,
+                    module: MODULE_NAME,
+                    simulate: dryRun
+                });
+            } catch (error) {
+                console.error('Firebase initialisation failed:', error);
+                showError('Could not connect to the data server', error.message);
+                return;
+            }
 
-                // Get module information
-                const moduleInfo = getModuleInfo(module_name);
-                console.log('Module info:', moduleInfo);
+            try {
+                console.log('Module info:', getModuleInfo(MODULE_NAME));
 
-                // Create the timeline
-                const timeline = await createModuleTimeline(module_name, settings);
+                const timeline = await createModuleTimeline(MODULE_NAME, settings);
                 console.log('Timeline created:', timeline);
-                
+
                 const exitFullscreen = {
                     type: jsPsychFullscreen,
                     fullscreen_mode: false
                 };
-                
-                // Create the complete timeline
+
+                // Debug runs skip the fullscreen switch but keep the trial, so
+                // URL parameters and the warning counter are still recorded.
+                // fullscreen_mode:false renders no button, so there is
+                // nothing for a simulated run to click - skip simulating it.
+                const startTrial = window.debug
+                    ? { ...enterExperiment, fullscreen_mode: false,
+                        simulation_options: { simulate: false } }
+                    : enterExperiment;
+
                 const fullTimeline = [
-                    enterExperiment,
+                    startTrial,
                     ...timeline,
                     exitFullscreen
                 ];
-                
-                // Run the experiment
+
                 if (window.simulating) {
                     console.log('Simulating experiment run...');
-                    
-                    // Simulation options
-                    let simulation_options = {
-                            default: {
-                                data: {
-                                    rt: 200,
-                                    speed_up: true,
-                                    speed_up_factor: 10,
-                                }
+                    await jsPsych.simulate(fullTimeline, "visual", {
+                        default: {
+                            data: {
+                                rt: 200,
+                                speed_up: true,
+                                speed_up_factor: 10,
                             }
-                    }
-
-                    await jsPsych.simulate(fullTimeline, "visual", simulation_options);
+                        }
+                    });
                 } else {
                     console.log('Running experiment...');
                     await jsPsych.run(fullTimeline);
                 }
-                
+
             } catch (error) {
                 console.error('Error running experiment:', error);
-                jsPsych.getDisplayElement().innerHTML = `
-                    <div style="text-align: center; padding: 50px;">
-                        <h2>Error Loading Experiment</h2>
-                        <p>There was an error loading the card choosing task:</p>
-                        <p><strong>${error.message}</strong></p>
-                        <p>Please check the console for more details.</p>
-                    </div>
-                `;
+                showError('Error Loading Experiment', error.message);
             }
         }
 

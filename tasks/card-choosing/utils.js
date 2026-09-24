@@ -1,5 +1,5 @@
 import { 
-  saveDataREDCap, 
+  flushData, 
   updateBonusState,
   canBeWarned,
   noChoiceWarning,
@@ -33,13 +33,6 @@ const preloadAssets = (settings) => {
                 images.push("3_finger_keys.jpg");
             }
 
-            // Add PIT images if present_pavlovian is true
-            if (settings.present_pavlovian) {
-                images = images.concat([
-                    "PIT1.png", "PIT2.png", "PIT3.png", "PIT4.png", "PIT5.png", "PIT6.png"
-                ].map(s => `pavlovian-stims/${settings.session}/${s}`));
-            }
-
             // Add any extra media assets
             if (Array.isArray(settings.extra_media_assets)) {
                 images = images.concat(settings.extra_media_assets);
@@ -50,23 +43,6 @@ const preloadAssets = (settings) => {
 };
 
 // UTILITY FUNCTIONS
-/**
- * Get mapping of pavlovian image magnitudes to file paths
- * @returns {Object} Object mapping magnitude values to image paths
- */
-function getPavlovianImages(settings) {
-    let PIT_imgs = {
-        0.01: "PIT3.png",
-        1.0: "PIT1.png",
-        0.5: "PIT2.png",
-        "-0.01": "PIT4.png",
-        "-1": "PIT6.png",
-        "-0.5": "PIT5.png"
-    };
-    PIT_imgs = Object.fromEntries(Object.entries(PIT_imgs).map(([k, v]) => [k, "./assets/images/pavlovian-stims/" + settings.session + "/" + v]));
-    return PIT_imgs;
-}
-
 /**
  * Adjust stimulus paths by prefixing with assets/images folder
  * @param {Array|null} structure - Trial structure containing stimulus paths
@@ -107,7 +83,7 @@ const interBlockMsg = (settings) => {
         },
         on_start: () => {
             // Save progress and update bonus calculations
-            saveDataREDCap();
+            flushData();
             updateBonusState(settings);
         },
         on_finish: () => { 
@@ -300,8 +276,7 @@ const cardChoosingTrial = (settings) => {
                 return canBeWarned(settings)
             },
             n_stimuli: jsPsych.timelineVariable('n_stimuli'),
-            present_pavlovian: jsPsych.timelineVariable('present_pavlovian'),
-            pavlovian_images: getPavlovianImages(settings),
+            present_pavlovian: false,
             data: {
                 trialphase: settings.task_name,
                 block: jsPsych.timelineVariable('block'),
@@ -455,7 +430,7 @@ function interBlockStimulus(settings){
     let txt = ``
 
     // Add text and tallies for early stop
-    if (window.skipThisBlock && (settings.session ? settings.session !== "screening" : true)){
+    if (window.skipThisBlock){
         
         txt += `<p>You've found the better ${n_groups > 1 ? "cards" : "card"}.</p><p>You will skip the remaining turns and `;
         
@@ -470,11 +445,9 @@ function interBlockStimulus(settings){
        
         
         // Add rest to outcomes
-        if (window.task !== "screening"){
-            Object.keys(last_trial.select('rest').values[0]).forEach(key => {
-                chosen_outcomes[key] += last_trial.select('rest').values[0][key];
-            });
-        }
+        Object.keys(last_trial.select('rest').values[0]).forEach(key => {
+            chosen_outcomes[key] += last_trial.select('rest').values[0][key];
+        });
 
     }
 
@@ -531,7 +504,7 @@ function buildCardChoosingTask(structure, insert_msg = true, settings = {task_na
         ];
 
         // Add pre-block instructions for numbered blocks
-        if (isValidNumber(block_number) & settings.task_name === "pilt" && (settings.session !== "screening")){
+        if (isValidNumber(block_number) && settings.task_name === "pilt"){
             block.push(
                 createPressBothTrial(
                     `
@@ -586,7 +559,6 @@ function buildCardChoosingTask(structure, insert_msg = true, settings = {task_na
 
 export { 
     preloadAssets,
-    getPavlovianImages,
     adjustStimuliPaths,
     interBlockMsg,
     testTrial,

@@ -1,73 +1,13 @@
-import { preventRefresh} from "./participation-validation.js"
+import { preventRefresh } from "./participation-validation.js"
+import { flushNow, recordState, finaliseSession } from "./saveData.js"
 
 /**
- * Data handling and communication utilities
- * Manages data saving, state updates, and communication with parent windows/servers
+ * Data handling utilities.
+ *
+ * Trial data reaches Firestore through saveData.js, driven by jsPsych's
+ * on_data_update hook - see experiment.html. The helpers here are the
+ * checkpoint and end-of-session hooks that task code calls directly.
  */
-
-/**
- * Sends messages to parent window with security validation
- * Used for communication between iframe and parent window in web experiments
- * @param {Object} message - Message object to send to parent
- * @param {Function} fallback - Callback function to execute if messaging fails
- */
-function postToParent(message, fallback = () => {}) {
-    try {
-        if (window.parent && window.parent.postMessage) {
-            const allowedOrigins = [
-                'http://localhost:3000',
-                'https://relmed.ac.uk',
-                'https://www.relmed.ac.uk'
-            ];
-
-            // Normalize a URL by removing trailing slashes
-            const normalizeUrl = (url) => url.replace(/\/+$/, '');
-
-            // Get the parent URL and normalize it
-            const parentUrl = normalizeUrl(document.referrer || window.parent.location.origin);
-
-            // Check if the normalized parent URL matches any of the allowed origins
-            const isAllowed = allowedOrigins.some(origin => normalizeUrl(origin) === parentUrl);
-
-            if (isAllowed) {
-                window.parent.postMessage(message, parentUrl);
-            } else {
-                // console.warn("Parent URL does not match any allowed origins:", parentUrl);
-                fallback();
-            }
-        } else {
-            console.warn("Parent window or postMessage is unavailable.");
-            fallback();
-        }
-    } catch (error) {
-        console.warn("Failed to send message to parent window:", error);
-
-        // Implement a fallback or handle the error
-        fallback();
-    }
-}
-
-/**
- * Updates experiment state and optionally saves data
- * Coordinates state management between client and server
- * @param {string} state - Current experiment state identifier
- * @param {boolean} save_data - Whether to save data to REDCap (default: true)
- */
-function updateState(state, save_data = true) {
-
-    // Save data to REDCap
-    if (!state.includes("no_resume") && save_data){
-        saveDataREDCap();
-    }
-
-    // Update bonus state
-    // updateBonusState();
-
-    console.log(state);
-    postToParent({
-        state: state
-    });
-}
 
 /**
  * Formats a date string into a standardized YYYY-MM-DD_HH:MM:SS format.
@@ -93,120 +33,68 @@ function format_date_from_string(s){
 }
 
 /**
- * Saves experimental data to REDCap database with retry mechanism
- * Handles both RELMED and Prolific data submission contexts
- * @param {number} retry - Number of retry attempts remaining (default: 1)
- * @param {Object} extra_fields - Additional fields to include in data submission
- * @param {Function} callback - Callback function to execute after successful submission
+ * Force any buffered trial data to be written now.
+ *
+ * Trials are already persisted continuously, so this is a checkpoint rather
+ * than an upload: it just stops the writer waiting out its coalescing interval
+ * at points where losing the last second of data would matter.
+ *
+ * @returns {Promise} Resolves once the buffer is empty
  */
-function saveDataREDCap(retry = 1, extra_fields = {}, callback = () => {}) {
-
-    // Get data, remove stimulus string to reduce payload size
-    const jspsych_data = jsPsych.data.get().ignore('stimulus').json();
-
-    // Get interaction data (mouse movements, focus changes, etc.)
-    const interaction_data = jsPsych.data.getInteractionData().json();
-
-    // Combine interaction data with jsPsych data
-    const combined_data = JSON.stringify([
-        {
-            interaction_data: interaction_data,
-            jspsych_data: jspsych_data
-        }
-    ]);
-
-    const sitting_start_time = format_date_from_string(jsPsych.getStartTime());
-    const record_id = window.participantID + "_" + sitting_start_time;
-
-    const data_message = {
-        data: {
-            record_id: record_id,
-            participant_id: window.participantID,
-            sitting_start_time: sitting_start_time,
-            session: window.session,
-            module: window.module,
-            data: combined_data 
-        },
-        ...extra_fields
-    };
-
-    console.log("Data to be sent:", data_message);
-
-    // Prepare REDCap record 
-    var redcap_record = JSON.stringify([{
-        record_id: record_id,
-        participant_id: window.participantID,
-        sitting_start_time: sitting_start_time,
-        session: window.session,
-        module: window.module,
-        data: combined_data
-    }])
-
-    // Submit data via AWS Lambda endpoint 
-    fetch('https://1aw5e65i79.execute-api.eu-north-1.amazonaws.com/prod/submit', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: redcap_record
-    })
-    .then(data => {
-        if (data.status === 200) {
-            console.log('Data successfully submitted to REDCap');
-        } else {
-            console.error('Error submitting data:', data.message);
-        }
-        return data.json()
-    })
-    .then(data => {
-        console.log(data)
-        callback(); // Call the callback function if submission is successful
-    }
-    )
-    .catch(error => {
-        console.error('Error:', error);
-        if (retry > 0) {
-            console.log('Retrying to submit data...');
-            setTimeout(function(){
-                saveDataREDCap(retry - 1);
-            }, 1000);
-        } else {
-            console.error('Failed to submit data after retrying.');
-            callback(error); // Call the callback function with the error if retries are exhausted
-        }
-    });
-
+function flushData() {
+    return flushNow();
 }
 
 /**
- * Handles experiment completion and final data submission
- * Removes page refresh prevention and redirects participants appropriately
+ * Records an experiment state marker and flushes buffered data.
+ *
+ * State markers land on the session document (`last_state` plus a `states`
+ * array), which makes a participant's progress visible in Firestore while the
+ * session is still running.
+ *
+ * @param {string} state - Current experiment state identifier
+ * @param {boolean} save_data - Whether to also flush buffered trial data
  */
-function endExperiment() {
+function updateState(state, save_data = true) {
+    console.log(state);
+    recordState(state);
 
-    // Print end experiment message
+    if (!state.includes("no_resume") && save_data){
+        flushData();
+    }
+}
+
+/**
+ * Handles experiment completion: local backup, final flush, session summary.
+ */
+async function endExperiment() {
+
     console.log("Experiment finished. Sending final data...");
 
     // Remove beforeunload event listener to allow page navigation
     window.removeEventListener('beforeunload', preventRefresh);
 
-    // Save data with end task message for RELMED context
-    saveDataREDCap(10, {
-        message: "endTask"
-    });
-
+    // Write the local CSV backup first: it is instant and cannot fail on a bad
+    // network, so the session is never left with no copy at all.
     const sitting_start_time = format_date_from_string(jsPsych.getStartTime());
     const record_id = window.participantID + "_" + sitting_start_time;
-
     jsPsych.data.get().localSave('csv', `${record_id}.csv`);
+
+    // Then close out the session document and wait for the server to confirm.
+    const last = jsPsych.data.get().last(1);
+    await finaliseSession({
+        bonus: last.select('bonus').values[0] ?? null,
+        total_time: jsPsych.getTotalTime(),
+        n_warnings: last.select('n_warnings').values[0] ?? 0
+    });
+
+    console.log("All data acknowledged by the server.");
 }
 
 // Export functions for use in other modules
 export {
-    postToParent,
+    format_date_from_string,
     updateState,
-    saveDataREDCap,
+    flushData,
     endExperiment
 };
-
-

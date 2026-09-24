@@ -3,7 +3,8 @@
  * Handles bonus computation and payment tracking across different experimental modules
  */
 
-import { postToParent, endExperiment, saveDataREDCap } from "./data-handling.js";
+import { flushData } from "./data-handling.js";
+import { recordBonusState } from "./saveData.js";
 
 /**
  * Rounds a numeric value to a specified number of decimal places
@@ -14,19 +15,6 @@ import { postToParent, endExperiment, saveDataREDCap } from "./data-handling.js"
 function roundDigits(value, digits = 2) {
     const multiplier = Math.pow(10, digits);
     return Math.round(value * multiplier) / multiplier;
-}
-
-/**
- * Creates a deep copy of the session state object
- * @returns {Object} Deep copy of window.session_state
- */
-function deepCopySessionState() {
-    const base = window.session_state || {};
-    const copy = {};
-    for (const key in base) {
-        copy[key] = { ...base[key] };
-    }
-    return copy;
 }
 
 /**
@@ -54,7 +42,10 @@ function computeTotalBonus(module) {
             
             // Call the computeBonus function if it exists
             if (task.computeBonus && typeof task.computeBonus === 'function') {
-                const bonusResult = task.computeBonus();
+                const bonusResult = task.computeBonus({
+                    ...task.defaultConfig,
+                    ...element.config
+                });
                 
                 // Handle the result (could be 0, object, or array)
                 if (bonusResult && typeof bonusResult === 'object') {
@@ -75,54 +66,26 @@ function computeTotalBonus(module) {
 }
 
 /**
- * Updates the session state with current task bonus information
- * Sends updated bonus data to parent window via postMessage
+ * Records the running bonus tally for a task on the session document.
+ *
+ * computeBonus() is cumulative - it re-scans every trial of the task so far -
+ * so the tally is replaced, not added to. (Accumulating would double-count on
+ * every inter-block message.) This is informational only: the bonus actually
+ * paid is recomputed from the trial data by computeTotalBonus().
  */
-
 function updateBonusState(settings) {
-    // Initialize an updated session state object
-    const updated_session_state_obj = deepCopySessionState();
+    const taskBonus = settings.__task.computeBonus(settings) || { earned: 0, min: 0, max: 0 };
 
-    // Initialize the task-specific object if it doesn't exist
-    if (!updated_session_state_obj[settings.task_name]) {
-        updated_session_state_obj[settings.task_name] = {
-            earned: 0,
-            min: 0,
-            max: 0
-        };
-    }
-    
-    // Get the previous bonus values from session state for this specific task
-    const prevBonus = {
-        earned: updated_session_state_obj[settings.task_name].earned || 0,
-        min: updated_session_state_obj[settings.task_name].min || 0,
-        max: updated_session_state_obj[settings.task_name].max || 0
-    };
-    console.log(`Last saved bonus for ${settings.task_name}:`, prevBonus);
-
-    // Get task-specific bonus data
-    const taskBonus = settings.__task.computeBonus() || {earned: 0, min: 0, max: 0};
-    
-    // Calculate the new bonus values
-    const newBonus = {
-        earned: prevBonus.earned + taskBonus.earned,
-        min: prevBonus.min + taskBonus.min,
-        max: prevBonus.max + taskBonus.max
+    const session_state = { ...(window.session_state || {}) };
+    session_state[settings.task_name] = {
+        earned: roundDigits(taskBonus.earned || 0),
+        min: roundDigits(taskBonus.min || 0),
+        max: roundDigits(taskBonus.max || 0)
     };
 
-    // Update the task-specific values in the session state
-    updated_session_state_obj[settings.task_name].earned = roundDigits(newBonus.earned);
-    if (settings.task_name !== "reversal") {
-        // For all tasks except reversal, we update the min and max in bonus state
-        updated_session_state_obj[settings.task_name].min = roundDigits(newBonus.min);
-        updated_session_state_obj[settings.task_name].max = roundDigits(newBonus.max);
-    }
-
-    // Send the updated state back to the parent window
-    console.log("To-be-updated bonus:", updated_session_state_obj);
-    postToParent({
-        session_state: JSON.stringify(updated_session_state_obj)
-    });
+    console.log("Bonus so far:", session_state);
+    window.session_state = session_state;
+    recordBonusState(session_state);
 }
 
 /**
@@ -133,16 +96,72 @@ function bonusTrial(module) {
     return {
         type: jsPsychHtmlKeyboardResponse,
         css_classes: ['instructions'],
-        stimulus: function (trial) {
-            // Determine context-appropriate terminology
-            let stimulus =  `Thank you for completing this session!`      
+        stimulus: function () {
             const total_bonus = computeTotalBonus(module);
-            stimulus += `
-                    <p>It is time to reveal your total bonus payment for this session.</p>
-                    <p>Altogether, you will earn an extra ${total_bonus.toLocaleString('en-GB', { style: 'currency', currency: 'GBP' })}.</p>
-                    <p>Please call the experimenter.</p>
-                `;
-            return stimulus;
+            const formatted = total_bonus.toLocaleString('en-GB', {
+                style: 'currency',
+                currency: 'GBP'
+            });
+
+            // Laid out as its own block rather than through `.instructions p`,
+            // whose fixed 700px left-aligned paragraphs left the heading
+            // centred and the body text off to one side.
+            return `
+                <style>
+                    .bonus-screen {
+                        width: 700px;
+                        max-width: 90vw;
+                        margin: 0 auto;
+                        text-align: center;
+                        color: #182b4b;
+                        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                                     Roboto, "Helvetica Neue", Arial, sans-serif;
+                    }
+                    .bonus-screen .bonus-title {
+                        font-size: 28px;
+                        font-weight: 600;
+                        line-height: 1.3;
+                        margin: 0 0 0.7em;
+                    }
+                    .bonus-screen .bonus-lead {
+                        font-size: 18px;
+                        line-height: 1.5;
+                        margin: 0 0 1.6em;
+                    }
+                    .bonus-screen .bonus-amount {
+                        display: inline-block;
+                        padding: 20px 44px;
+                        border-radius: 12px;
+                        border: 2px solid #f4ce5c;
+                        background: rgba(244, 206, 92, 0.22);
+                    }
+                    .bonus-screen .bonus-amount-label {
+                        font-size: 15px;
+                        letter-spacing: 0.04em;
+                        text-transform: uppercase;
+                        opacity: 0.75;
+                        margin-bottom: 8px;
+                    }
+                    .bonus-screen .bonus-amount-value {
+                        font-size: 46px;
+                        font-weight: 700;
+                        line-height: 1.1;
+                    }
+                    .bonus-screen .bonus-footer {
+                        font-size: 18px;
+                        margin-top: 1.9em;
+                    }
+                </style>
+                <div class="bonus-screen">
+                    <div class="bonus-title">Thank you for completing this session!</div>
+                    <div class="bonus-lead">It is time to reveal your total bonus payment for this session.</div>
+                    <div class="bonus-amount">
+                        <div class="bonus-amount-label">Altogether, you will earn an extra</div>
+                        <div class="bonus-amount-value">${formatted}</div>
+                    </div>
+                    <div class="bonus-footer">Please call the experimenter.</div>
+                </div>
+            `;
     },
     choices: ['p'],
     data: { trialphase: 'bonus_trial' },
@@ -153,11 +172,16 @@ function bonusTrial(module) {
           bonus: bonus
       });
 
-      saveDataREDCap();
+      flushData();
     },
-    on_finish: endExperiment,
+    // This trial deliberately waits for the experimenter to press "p", so it
+    // would stall a simulated run - and with it endExperiment(), which writes
+    // the local CSV and finalises the session. Simulate it away whenever the
+    // run is itself simulated, or in local development.
     simulation_options: {
-      simulate: window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' // Simulate the bonus trial in development mode
+      simulate: Boolean(window.simulating) ||
+        window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1'
     }
   };
 }
@@ -165,7 +189,6 @@ function bonusTrial(module) {
 // Export functions for use in other modules
 export {
     roundDigits,
-    deepCopySessionState,
     computeTotalBonus,
     updateBonusState,
     bonusTrial
