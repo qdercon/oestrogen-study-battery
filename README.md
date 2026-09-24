@@ -1,304 +1,214 @@
-# RELMED Task Battery
+# Oestrogen Patch Study — Task Battery
 
-## Overview
-This repository aims to provide easy to customize code for the RELMED task battery. This system provides a standardized interface for creating and combining experimental timelines, making it easy to build complete experiments from individual task components. The framework is built on top of jsPsych and follows a modular architecture that promotes code reusability and consistency across different experimental paradigms.
+Web-based cognitive task battery for the oestrogen patch study. This is a cut-down
+fork of the RELMED task battery, reduced to the two card-choosing learning tasks and
+their post-learning test phases. Everything else from the original battery (vigour,
+PIT, control, delay discounting, questionnaires) has been removed.
 
-## Available Tasks
+Built on jsPsych 8. Runs in the browser, writes trial-by-trial to Firestore, and is
+deployed on Firebase Hosting.
 
-The battery currently includes the following experimental tasks:
+## What a participant does
 
-### Learning & Decision Making Tasks Based on Card Choosing
-- **PILT** - Probabilistic Instrumental Learning Task: A card-choosing task measuring probabilistic learning with 2-choice decisions
-- **WM** - Working Memory Task: Anne Collins's RLWM task with 3-choice decisions and reward-only feedback
-- **Post Learning Test** - Extinction test phase for evaluating learning performance after card-choosing tasks
-- **Pavlovian Lottery** - Conditioning task creating associations between visual cues and monetary rewards
+One sitting runs a single module, `oestrogen_battery`, defined in
+[api/module-registry.js](api/module-registry.js). The order is fixed:
 
-### Reward & Motivation Tasks Based on Repeated Key Pressing
-- **Max Press Test** - Tests maximum key press speed for calibrating effort-based tasks
-- **Vigour Task** - Measures instrumental action vigour as a function of reward rate
-- **PIT** - Pavlovian-Instrumental Transfer Task: Measures action vigour in extinction with Pavlovian cues
+| # | Element | Detail |
+|---|---------|--------|
+| 1 | Welcome instructions | |
+| 2 | **PILT** | Probabilistic instrumental learning. Two cards, pick one with the arrow keys. 15 blocks × 10 trials, one card pair per block. Outcomes are ±1p, ±50p and ±£1; blocks are reward-only, punishment-only, or mixed. |
+| 3 | **WM** | Anne Collins-esque RLWM task. One card shown, choose one of three response keys. Set size 8 (8 cards in a single block), 108 trials, reward only (1p / 50p / £1). |
+| 4 | Break | Experimenter-gated — press `c` to continue. |
+| 5 | **Post-PILT test** | 60 trials, 4 blocks. Cards from the learning phase re-paired, no feedback. |
+| 6 | **Post-WM test** | 28 trials, 1 block. Same idea for the WM stimuli. |
+| 7 | Bonus screen | Shows total bonus. Experimenter-gated — press `p` to finish. |
 
-### Control & Exploration Tasks
-- **Control Task** - Measures control-seeking, information-seeking, and reward-seeking behavior
+A few behaviours worth knowing:
 
-### Miscellaneous Tasks
-- **Delay Discounting** - Measures preferences for smaller-sooner vs larger-later monetary rewards
-- **Open Text** - Collects open-ended text responses with customizable time limits and validation
+- **PILT blocks can end early.** A block stops once the last five choices were
+  optimal for every card pair in it (at least five trials must have elapsed). The
+  current sequences use one pair per block, so in practice that means five optimal
+  choices in a row. 150 trials is therefore a ceiling, not the expected count.
+- **Confidence ratings** are collected in both test phases, every 4th trial, on a
+  1–5 scale.
+- **Response deadlines** are 4 s normally, extended to 6 s after a participant has
+  accrued warnings. Missing the deadline triggers a "didn't catch a response"
+  message; there's a cap of 3 such warnings per task.
+- **Bonus** is (currently) scaled between a £3.00 floor and a £5.00 maximum, based on where
+  total earnings fall between the minimum and maximum achievable across both tasks.
+  See `computeTotalBonus()` in [core/utils/bonus.js](core/utils/bonus.js).
 
-## Repository Structure
+## The three sessions
+
+Participants complete the battery three times. The session keys used in code and in
+the data are `wk0`, `wk2` and `wk4`; the launcher page presents them to experimenters
+as Session 1, 2 and 3:
+
+| Launcher label | Session key |
+|----------------|-------------|
+| Session 1 | `wk0` |
+| Session 2 | `wk2` |
+| Session 3 | `wk4` |
+
+The structure is identical across sessions — same tasks, same trial counts, same
+bonus scheme. What changes is the **stimuli and trial orderings**: each session has
+its own independently generated sequence files, so participants never re-learn the
+same card-outcome mappings.
 
 ```
-relmed_task_battery/
-├── README
-├── api/                          # Task registry and unified interface
-│   ├── index.js                 # Main API entry point
-│   ├── task-registry.js         # Task definitions and configuration
-│   ├── module-registry.js       # Module definitions for multi-task experiments
-│   ├── messages.js              # Instruction messages for modules
-│   └── utils.js                 # Core API utility functions
-├── tasks/                       # Individual task implementations
-│   ├── card-choosing/           # PILT and WM tasks
-│   ├── control/                 # Control task
-│   ├── delay-discounting/       # Delay discounting task
-│   ├── max-press-test/          # Max press speed test
-│   ├── open-text/               # Open text questions
-│   ├── pavlovian-lottery/       # Pavlovian conditioning
-│   └── piggy-banks/             # Vigour and PIT tasks
-├── core/                        # Shared utilities and jsPsych
-│   ├── utils/                   # Common utility functions
-│   └── jspsych/                 # jsPsych library and plugins
-├── assets/                      # Static resources
-│   ├── images/                  # Task images and stimuli
-│   └── sequences/               # Experimental sequences/parameters
-└── examples/                    # Working example HTML files
+tasks/card-choosing/sequences/
+├── PILT/       trial1_wk0.js  trial1_wk2.js  trial1_wk4.js
+├── WM/         trial1_wk0.js  trial1_wk2.js  trial1_wk4.js
+├── PILT-test/  trial1_wk0.js  trial1_wk2.js  trial1_wk4.js
+└── WM-test/    trial1_wk0.js  trial1_wk2.js  trial1_wk4.js
 ```
 
-## How to Build an Experiment
+The session is picked by the `session` URL parameter, which selects the matching
+sequence file for every task in the module. It defaults to `wk0` if omitted.
 
-### Creating Experiments is Simple
+The only other session-dependent behaviour is the welcome text: at `wk0` it adds a
+line asking participants to read the instructions carefully, since they differ from
+the training session ([api/messages.js](api/messages.js)).
 
-**If you don't need to modify task behavior**, creating an experiment is straightforward - you just need to write an HTML file that loads the required dependencies and calls the API functions. The framework handles all the task logic, timing, and data collection automatically.
+## Running a session
 
-**You have two main approaches:**
-1. **Individual Tasks**: Build experiments by combining individual tasks using `createTaskTimeline()`
-2. **Modules**: Use collections of tasks using `createModuleTimeline()` 
+Normally, open the launcher page and fill in the form — enter the participant ID,
+pick the session from the dropdown, and press start:
 
-### Approach 1: Individual Tasks
-
-This approach gives you maximum flexibility to customize which tasks to include and their order.
-
-#### Steps to Create an HTML Experiment File
-
-1. **Set up HTML structure**: Create a basic HTML page with a display element for jsPsych
-
-2. **Load dependencies in the `<head>`**:
-   - jsPsych core library (`jspsych.js`)
-   - Required jsPsych plugins (varies by task)
-   - Task-specific plugin files (check task requirements)
-   - Core utilities as ES6 modules
-   - CSS files (jsPsych core + task-specific styles)
-
-3. **Initialize jsPsych** with display settings and completion handlers
-
-4. **Create experiment logic**:
-   - Import API functions (`createTaskTimeline`, `getTaskInfo`, etc.)
-   - Use `createTaskTimeline()` to generate task timelines with optional configuration
-   - Combine multiple tasks by concatenating their timelines
-   - Add experiment entry/exit (fullscreen, etc.)
-
-5. **Run the experiment** using `jsPsych.run()`
-
-#### Single vs Multiple Tasks
-
-- **Single Task**: Call `createTaskTimeline()` once with your desired configuration
-- **Multiple Tasks**: Call `createTaskTimeline()` for each task and combine the resulting arrays into one timeline
-- **Task Order**: Simply arrange the timeline arrays in the order you want tasks to appear
-
-### Approach 2: Predefined Modules
-
-Modules are predefined collections of tasks designed to be completed in a single session. They include task sequencing, instruction messages, and standardized configurations.
-
-#### Available Modules
-
-- **`full_battery`**: Complete RELMED task battery with all tasks and questionnaires
-- **`screening`**: Shortened version for participant screening with key tasks
-
-#### Using Modules
-
-```javascript
-// Import module functions
-import { createModuleTimeline, getModuleInfo, listModules } from '/api/index.js';
-
-// Get information about available modules
-console.log(listModules()); // ['full_battery', 'screening']
-console.log(getModuleInfo('screening')); // Detailed module information
-
-// Create timeline for a module
-const timeline = await createModuleTimeline('screening', {
-    session: 'screening',
-    sequence: 'screening'
-});
-
-// Run the experiment
-await jsPsych.run([enterExperiment, ...timeline, exitFullscreen]);
+```
+https://oestrogen-project.web.app/
 ```
 
-#### Module Configuration
+It just builds the experiment URL for you. You can also go straight there:
 
-Modules support three levels of configuration (in order of precedence):
-1. **Module-level config**: Applied to all tasks in the module
-2. **Element-level config**: Applied to specific tasks within the module 
-3. **Runtime config**: Passed to `createModuleTimeline()`, overrides all others
-
-```javascript
-// Module definition example (from module-registry.js)
-{
-    name: "Screening Module",
-    moduleConfig: {           // Applied to all tasks
-        session: "screening",
-        sequence: "screening"
-    },
-    elements: [
-        { type: "task", name: "PILT", config: { present_pavlovian: false } }, // Task-specific config
-        { type: "instructions", config: { text: "start_message" } }
-    ]
-}
-
-// Runtime configuration overrides everything
-const timeline = await createModuleTimeline('screening', {
-    session: 'custom_session'  // This will override moduleConfig.session
-});
+```
+https://oestrogen-project.web.app/experiment.html?participant_id=PPT001&session=wk0
 ```
 
-#### Creating Custom Modules
+| Parameter | Required | Notes |
+|-----------|----------|-------|
+| `participant_id` | yes | Recorded on every Firestore document. |
+| `session` | no | `wk0` \| `wk2` \| `wk4`. Defaults to `wk0`. |
 
-You can define your own modules in `api/module-registry.js`:
+The experiment runs fullscreen and blocks refresh and right-click. If the participant
+leaves fullscreen, they're prompted back and a warning is counted.
 
-```javascript
-export const ModuleRegistry = {
-    my_custom_module: {
-        name: "My Custom Module",
-        moduleConfig: {
-            session: "custom",
-            sequence: "wk0"
-        },
-        elements: [
-            { type: "instructions", config: { text: "start_message" } },
-            { type: "task", name: "PILT" },
-            { type: "task", name: "control", config: { max_instruction_fails: 5 } },
-            { type: "task", name: "open_text" },
-            { type: "instructions", config: { text: "end_message" } }
-        ]
-    }
-};
+### Testing
+
+Two magic strings in `participant_id` change behaviour ([experiment.html](experiment.html)):
+
+- **`debug`** — no fullscreen enforcement, no navigation blocking. Also flags the
+  session document with `is_debug: true`.
+- **`simulate`** — jsPsych auto-plays the whole battery. Writes are logged to the
+  console instead of hitting Firestore, *unless* you add `&firebase=1`.
+
+```
+# dry run, nothing written to Firestore
+...?participant_id=debug_simulate_01&session=wk0
+
+# simulated run that does write to Firestore
+...?participant_id=debug_simulate_01&session=wk0&firebase=1
 ```
 
-### Required Files and Dependencies
+Use a `participant_id` containing both `debug` and `simulate` for test runs, so the
+data is filterable later via the `is_debug` flag.
 
-**For every experiment, you must include:**
+The launcher form can't add `&firebase=1`, so use a direct `experiment.html?...` URL
+when you want a simulated run to actually write.
 
-1. **jsPsych core files**: Always load `jspsych.js` and required plugins
-2. **Core utilities**: Load `/core/utils/index.js` as a module
-3. **Task-specific files**: Check each task's requirements in the task registry
-4. **CSS files**: Include `jspsych.css` and task-specific stylesheets
+## Data
 
-**Task-specific requirements** (check `api/task-registry.js` for complete details):
-- **PILT/WM**: Requires `plugin-card-choosing.js` and `styles.css`
-- **Control**: Requires multiple control plugins and `styles.css`
-- **Vigour/PIT**: Requires piggy-banks plugins and `styles.css`
-- **Delay Discounting**: Requires only core plugins and `styles.css`
+### Firestore
 
-### Task Configuration
+Trials are written continuously, one document field per trial, keyed by zero-padded
+jsPsych trial index. Document IDs are the participant's anonymous auth UID.
 
-Each task accepts a configuration object to customize behavior. If you don't need to change anything, you can use the default settings by passing an empty object `{}` or omitting the configuration entirely.
-
-**Example configurations for different tasks:**
-
-```javascript
-// PILT with custom settings
-const piltConfig = {
-    task_name: "pilt",
-    n_choices: 2,
-    valence: "mixed",           // "mixed", "reward", "punishment", "both"
-    present_pavlovian: true,
-    sequence: 'wk0',
-    include_instructions: true
-};
-
-// Control task with custom timing
-const controlConfig = {
-    session: "wk0",
-    max_instruction_fails: 3,
-    default_response_deadline: 4000,
-    long_response_deadline: 6000
-};
-
-// Delay discounting with default settings (just pass empty object)
-const ddConfig = {};
+```
+pilt-wm-main/tasks/session/{uid}     session metadata, bonus, completion flag
+pilt-wm-main/tasks/PILT/{uid}        PILT learning trials
+pilt-wm-main/tasks/WM/{uid}          WM learning trials
+pilt-wm-main/tasks/other/{uid}       instructions, inter-block screens, etc.
+pilt-wm-test/tasks/pilt_test/{uid}   post-PILT test + confidence ratings
+pilt-wm-test/tasks/wm_test/{uid}     post-WM test + confidence ratings
 ```
 
-### Getting Task Information
+Writes are batched to at most one per second per document to stay within Firestore's
+per-document write limit, and failed writes are retried with backoff rather than
+dropped. If saving fails repeatedly a red banner appears telling the participant to
+fetch the experimenter. See [core/utils/saveData.js](core/utils/saveData.js).
 
-Use `getTaskInfo()` to explore available configuration options:
+A session is only marked `expCompleted: 1` once the participant reaches the end and
+the server acknowledges every pending write.
 
-```javascript
-const taskInfo = getTaskInfo('PILT');
-console.log(taskInfo.configOptions);  // Shows all available config options
-console.log(taskInfo.defaultConfig);  // Shows default values
+### Local CSV backup
+
+At the end of every session the browser also downloads a full CSV
+(`{participant_id}_{timestamp}.csv`). This is written *before* the final Firestore
+flush, so there's always a local copy even if the network fails.
+
+### Getting the data out
+
+[scripts/download_data.py](scripts/download_data.py) pulls everything into tidy CSVs
+using the Admin SDK:
+
+```bash
+pip install -r scripts/requirements.txt
+python scripts/download_data.py --key path/to/serviceAccountKey.json
+python scripts/download_data.py --key ... --session wk0 --completed-only
 ```
 
-## API Reference
+The service account key is **not** in this repo and must never be committed or
+deployed — it bypasses all Firestore security rules.
 
-### Core Functions
+## Repository structure
 
-#### Individual Tasks
-- `createTaskTimeline(taskName, config)` - Creates a timeline for the specified task
-- `getTaskInfo(taskName)` - Returns task information including configuration options
-- `listTasks()` - Returns array of all available task names
-- `getTask(taskName)` - Returns the complete task object from registry
-
-#### Modules (Multi-Task Collections)
-- `createModuleTimeline(moduleName, config)` - Creates a timeline for an entire module
-- `getModuleInfo(moduleName)` - Returns module information including task sequence
-- `listModules()` - Returns array of all available module names
-- `getModule(moduleName)` - Returns the complete module object from registry
-
-#### Messages and Instructions
-- `getMessage(moduleName, messageKey, settings)` - Retrieves instruction messages for modules
-
-### Utility Functions
-
-- `enterExperiment` - Standard fullscreen entry point for experiments
-- Various bonus calculation, data handling, and resumption utilities in `/core/utils/`
-
-### Task Names
-
-Use these exact strings when calling `createTaskTimeline()`:
-- `'PILT'`, `'WM'`, `'post_learning_test'`, `'post_PILT_test'`, `'post_WM_test'`
-- `'delay_discounting'`, `'vigour'`, `'vigour_test'`, `'PIT'` 
-- `'control'`, `'max_press_test'`, `'pavlovian_lottery'`, `'open_text'`
-- `'reversal'`, `'acceptability_judgment'`
-
-### Module Names
-
-Use these exact strings when calling `createModuleTimeline()`:
-- `'full_battery'` - Complete RELMED task battery 
-- `'screening'` - Shortened screening version
-
-## Examples
-
-Complete working examples are available in the `examples/` folder:
-
-### Individual Task Examples
-- `PILT.html` - Card choosing learning task
-- `control.html` - Control-seeking task  
-- `delay-discounting.html` - Intertemporal choice task
-- `vigour.html` - Action vigour task
-- And more...
-
-Each example demonstrates proper file loading, API usage, and task configuration for that specific task type.
-
-### Module Example
-- `experiment.html` - Complete module-based experiment using `createModuleTimeline()`
-
-This example shows how to:
-- Load all required dependencies for multiple tasks
-- Use URL parameters to select modules (`full_battery` vs `screening`)
-- Handle module configuration and timeline creation
-- Support simulation mode for testing
-
-**Key features demonstrated:**
-```javascript
-// Module selection based on URL parameter
-const module_name = session == "screening" ? 'screening' : 'full_battery';
-
-// Module timeline creation
-const timeline = await createModuleTimeline(module_name, settings);
-
-// Complete experiment structure
-const fullTimeline = [
-    enterExperiment,
-    ...timeline,
-    exitFullscreen
-];
 ```
+├── experiment.html          # the entry point participants load
+├── index.html               # launcher form (participant ID + session dropdown)
+├── firebase.json            # hosting config + deploy ignore list
+├── firestore.rules          # each UID may only touch its own documents
+├── api/
+│   ├── module-registry.js   # the oestrogen_battery module definition
+│   ├── task-registry.js     # per-task config and sequence file mapping
+│   ├── messages.js          # welcome and break screen text
+│   └── utils.js             # timeline assembly
+├── core/
+│   ├── utils/               # firebase, saveData, bonus, data handling, guards
+│   └── jspsych/             # jsPsych 8 library and plugins
+├── tasks/card-choosing/     # the only task module left in this fork
+│   ├── plugin-card-choosing.js
+│   ├── timeline.js, utils.js, instructions.js
+│   └── sequences/           # per-session trial sequences (see above)
+├── assets/images/           # card stimuli and coin images
+├── examples/                # standalone single-task pages, not deployed
+└── scripts/                 # data download, not deployed
+```
+
+## Deploying
+
+```bash
+firebase deploy --only hosting
+```
+
+Hosting serves the repo root, so the `ignore` list in
+[firebase.json](firebase.json) is what keeps credentials, `.git/`, `scripts/` and
+`examples/` off the public site. If you add anything sensitive to the repo root,
+add it there too.
+
+Rules and indexes are deployed separately (`--only firestore:rules`) and rarely
+need to change.
+
+## Making changes
+
+- **Adjust trial counts, deadlines, or bonus** — [api/task-registry.js](api/task-registry.js)
+  (`defaultConfig` per task, plus `globalConfig` at the bottom) and `max_bonus` /
+  `min_prop_bonus` in [api/module-registry.js](api/module-registry.js).
+- **Change task order or add a task** — the `elements` array in
+  [api/module-registry.js](api/module-registry.js).
+- **Change instruction or break text** — [api/messages.js](api/messages.js).
+- **Add a new session** — drop in sequence files and add the key to each task's
+  `sequences` map in the task registry.
+
+`examples/` has standalone pages (`PILT.html`, `WM.html`, `post-PILT-test.html`) for
+running a single task in isolation, which is the quickest way to check a change
+without sitting through the whole battery.
