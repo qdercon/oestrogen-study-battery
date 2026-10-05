@@ -43,7 +43,7 @@ function preparePILTInstructions(settings) {
             `<p><b>THE CARD CHOOSING GAME</b></p>
                 <p>In this game you will flip cards to collect the coins behind them.</p>
                 <p>Some cards are luckier than others. Your goal is to collect as much game money as possible and avoid losing it.</p>
-                <p>At the end of this session, you will be paid a bonus based on the sum of coins you collected.</p>`,
+                <p>At the end of this session, the coins you collected will be turned into a points score, so the more coins you collect, the higher your score.</p>`,
             `<p>On each turn of this game, you will see two cards.
                 You have four seconds to flip one of the two cards.</p>
                 <p>This will reveal the coin you collect: either 1 pound, 50 pence, or 1 penny.</p>
@@ -149,111 +149,28 @@ function preparePILTInstructions(settings) {
                 data: {trialphase: "pilt_instruction"}
             });
     
-    // Create instruction comprehension quiz questions
-    let quiz_questions = [
-        {
-            prompt: `Some cards are better than others, but even the best cards might only give a penny or break a £1 coin.`,
-            options: ["True", "False"],
-            required: true
-        },
-        {
-            prompt: `My goal is to collect as much game coins as I can and avoid losing them.`,
-            options: ["True", "False"],
-            required: true
-        },
-    ];
-
-    // Broken coin question
-    quiz_questions.splice(1, 0, {
-        prompt: "If I find a broken coin, that means I lose that amount.",
-        options: ["True", "False"],
-        required: true
-    });
-
-    // Create quiz trial object
-    let quiz = [
-        {
-            type: jsPsychSurveyMultiChoice,
-            questions: quiz_questions,
-            css_classes: ["instructions"],
-            preamble: `<div class=instructions><p>For each statement, please indicate whether it is true or false:</p></div>`,
-            data: {
-                trialphase: "instruction_quiz"
+    // Instruction comprehension quiz, repeated until passed
+    const inst_loop = buildQuizLoop(
+        [
+            {
+                prompt: `Some cards are better than others, but even the best cards might only give a penny or break a £1 coin.`,
+                correct: "True",
+                explanation: "You can learn which cards are better by trial and error. However, cards are not 100% consistent in the coins behind them."
             },
-            simulation_options: {
-                data: {
-                    response: {
-                        Q0: `True`,
-                        Q1: `True`,
-                        Q2: `True`
-                    }
-                }
+            {
+                prompt: "If I find a broken coin, that means I lose that amount.",
+                correct: "True",
+                explanation: "If you find a broken coin, you lose that amount of game coins. This means that if you find a broken £1 coin, you lose £1 in the game."
             },
-        }
-    ];
-
-    // Explanation for wrong answers
-    let piltQuizExplanation = [
-        {
-            prompt: `Some cards are better than others, but even the best cards might only give a penny or break a £1 coin.`,
-            explanation: "You can learn which cards are better by trial and error. However, cards are not 100% consistent in the coins behind them."
-        },
-        {
-            prompt: `My goal is to collect as much game coins as I can and avoid losing them.`,
-            explanation: "Your goal is to collect as much money as possible. This means learning to chose cards that give you the most money, and avoiding cards that break valuable coins."
-        }
-    ];
-
-    piltQuizExplanation.splice(1, 0,{
-        prompt: "If I find a broken coin, that means I lose that amount.",
-        explanation: "If you find a broken coin, you lose that amount of game coins. This means that if you find a broken £1 coin, you lose £1 in the game."
-    });
-    
-    
-    quiz.push(
-        {   
-            type: jsPsychInstructions,
-            css_classes: ['instructions'],
-            allow_keys: false,
-            show_page_number: false,
-            show_clickable_nav: true,
-            data: {
-                trialphase: "pilt_instruction_quiz_review"
-            },
-            timeline: [
-                {
-                    pages: () => {
-                        const data = jsPsych.data.get().filter({trialphase: "instruction_quiz"}).last(1).select('response').values[0];
-                        return piltQuizExplanation.filter((item, index) => {
-                            return Object.values(data)[index] !== "True";
-                        }).map(item => `
-                            <p>You gave the wrong answer for the following question:</p>
-                            <h3 style="color: darkred; width: 700px; text-align: left;">Question: ${item.prompt}</h3>
-                            <br>
-                            <p style="max-width: 700px; text-align: left;"><strong>The correct answer:</strong> True</p>
-                            <p style="max-width: 700px; text-align: left;"><strong>Explanation:</strong> ${item.explanation}</p>
-                            <p>Press next to try the quiz again.</p>
-                        `);
-                    }
-                }
-            ],
-            conditional_function: check_quiz_failed
-        }
-    );
-
-
-    // Create instruction loop with quiz feedback and retry logic
-    const inst_loop = {
-        timeline: quiz,
-        loop_function: () => {
-            if (!check_quiz_failed()){
-                return false; // Quiz passed, exit loop
+            {
+                prompt: `My goal is to collect as much game coins as I can and avoid losing them.`,
+                correct: "True",
+                explanation: "Your goal is to collect as many coins as possible. This means learning to choose cards that give you the most coins, and avoiding cards that break valuable coins."
             }
-
-            // Allow unlimited quiz attempts
-            return true;
-        }
-    }
+        ],
+        "instruction_quiz",
+        "pilt_instruction_quiz_review"
+    );
 
     // Build final instruction timeline
     let inst_total = [];
@@ -279,31 +196,105 @@ function preparePILTInstructions(settings) {
 } 
 
 /**
- * Checks if the participant failed the instruction comprehension quiz
- * @returns {boolean} True if any quiz answer is incorrect, false if all answers are "True"
+ * Builds a true/false comprehension quiz that repeats until every answer is correct.
+ * After a failed attempt, an explanation page is shown for each question answered wrongly.
+ * @param {Array} questions - Objects with prompt, correct ("True"/"False") and explanation
+ * @param {string} quiz_trialphase - trialphase recorded on the quiz trial
+ * @param {string} review_trialphase - trialphase recorded on the explanation pages
+ * @returns {Object} jsPsych looping timeline object
  */
-function check_quiz_failed() {
-    const data = jsPsych.data.get().filter({trialphase: "instruction_quiz"}).last(1).select('response').values[0];
+function buildQuizLoop(questions, quiz_trialphase, review_trialphase) {
 
-    return !Object.values(data).every(value => value === "True");
+    // Responses to the most recent attempt, in question order
+    const lastResponses = () => Object.values(
+        jsPsych.data.get().filter({trialphase: quiz_trialphase}).last(1).select('response').values[0]
+    );
+
+    const quizFailed = () => {
+        const responses = lastResponses();
+        return questions.some((q, i) => responses[i] !== q.correct);
+    };
+
+    return {
+        timeline: [
+            {
+                type: jsPsychSurveyMultiChoice,
+                questions: questions.map(q => ({
+                    prompt: q.prompt,
+                    options: ["True", "False"],
+                    required: true
+                })),
+                css_classes: ["instructions"],
+                preamble: `<div class=instructions><p>For each statement, please indicate whether it is true or false:</p></div>`,
+                data: {
+                    trialphase: quiz_trialphase
+                },
+                simulation_options: {
+                    data: {
+                        response: Object.fromEntries(questions.map((q, i) => [`Q${i}`, q.correct]))
+                    }
+                }
+            },
+            {
+                type: jsPsychInstructions,
+                css_classes: ['instructions'],
+                allow_keys: false,
+                show_page_number: false,
+                show_clickable_nav: true,
+                data: {
+                    trialphase: review_trialphase
+                },
+                timeline: [
+                    {
+                        pages: () => {
+                            const responses = lastResponses();
+                            return questions.filter((q, i) => responses[i] !== q.correct).map(q => `
+                                <p>You gave the wrong answer for the following question:</p>
+                                <h3 style="color: darkred; width: 700px; text-align: left;">Question: ${q.prompt}</h3>
+                                <br>
+                                <p style="max-width: 700px; text-align: left;"><strong>The correct answer:</strong> ${q.correct}</p>
+                                <p style="max-width: 700px; text-align: left;"><strong>Explanation:</strong> ${q.explanation}</p>
+                                <p>Press next to try the quiz again.</p>
+                            `);
+                        }
+                    }
+                ],
+                conditional_function: quizFailed
+            }
+        ],
+        // Allow unlimited quiz attempts
+        loop_function: quizFailed
+    };
 }
 
 
+// Task-specific text for the post-learning test phases. Each is shown right
+// after the other, so they need to read as clearly different screens.
+const test_instruction_pages = {
+    pilt_test: `<p><b>CARD MEMORY: PART 1</b></p>
+        <p>Next, you will see cards from the <b>first game</b>, where you chose between two cards on every turn.</p>
+        <p>On each turn, you will again choose between two of those cards, but they may now be paired differently from before.
+        Try your best to pick the card that you think is most rewarding.</p>
+        <p>In this round, you will not see the coins you collect after each choice, but your coins will still be added to your safe.</p>
+        <p>This round will take about three minutes to complete.</p>`,
+    wm_test: `<p><b>CARD MEMORY: PART 2 (FINAL ROUND)</b></p>
+        <p>Well done, you have finished part 1. This is the last round of the session.</p>
+        <p>This time, you will see cards from the <b>second game</b>, where you saw one card at a time and pressed an arrow key to flip it.</p>
+        <p>Those cards will now be shown in pairs. On each turn, pick the card that you think is most rewarding.</p>
+        <p>As in part 1, you will not see the coins you collect after each choice, but they will still be added to your safe.</p>
+        <p>This round will take about two minutes to complete.</p>`
+};
+
 /**
- * Creates instructions for post-PILT test phase
- * @param {string} task - The task identifier (e.g., "pilt", "ltm", "wm")
+ * Creates instructions for a post-learning test phase
+ * @param {string} task - The test phase identifier ("pilt_test" or "wm_test")
  * @returns {Object} jsPsych instruction trial object for test phase
  */
 const testInstructions = (task) => {
     return {
         type: jsPsychInstructions,
         css_classes: ['instructions'],
-        pages: [
-            `<p>You will now begin another round of the card choosing game.</p>
-            <p>In this round, you will not see the coins you collect after each choice, but your coins will still be added to your safe.</p>
-            <p>On each turn, you will choose between two cards you have already seen. Try your best to pick the card that you think is most rewarding.</p>
-            <p>This round will take about three minutes to complete.</p>`
-        ],
+        pages: [test_instruction_pages[task]],
         show_clickable_nav: true,
         on_start: () => {
             updateState(`${task}_test_instructions_start`);
@@ -376,9 +367,44 @@ const WM_instructions = [
         data: {trialphase: "WM_instructions"}
     },
     {
+        type: jsPsychInstructions,
+        css_classes: ['instructions'],
+        pages: [`<p>Before you start playing, you'll answer a few questions about the instructions you just read.</p>
+                <p>You must answer all questions correctly to begin the game.</p>
+                <p>If not, you can review the instructions and try again.</p>`],
+        show_clickable_nav: true,
+        data: {trialphase: "WM_instructions"}
+    },
+    buildQuizLoop(
+        [
+            {
+                prompt: "On each turn, I will see one card, and I flip it by pressing the left, up, or right arrow key.",
+                correct: "True",
+                explanation: "In this game you see a single card on each turn. You flip it by pressing one of the three arrow keys: left, up, or right."
+            },
+            {
+                prompt: "For each card, one of the keys will always reveal £1 or 50-pence coins, while the other two keys will reveal only pennies.",
+                correct: "True",
+                explanation: "Every card has one better key. Pressing it always reveals £1 or 50-pence coins, while the other two keys reveal only pennies."
+            },
+            {
+                prompt: "The better key to press is the same for every card.",
+                correct: "False",
+                explanation: "Each card has its own better key. To collect the most coins, you need to learn and remember which key is better for each card."
+            },
+            {
+                prompt: "In this game, pressing the wrong key can break my coins.",
+                correct: "False",
+                explanation: "There are no broken coins in this game. Pressing one of the other keys reveals only a penny."
+            }
+        ],
+        "wm_instruction_quiz",
+        "wm_instruction_quiz_review"
+    ),
+    {
         type: jsPsychHtmlKeyboardResponse,
         css_classes: ['instructions'],
-        stimulus: `<p>Let's get started!</p>
+        stimulus: `<p>Great! Let's get started!</p>
         <p>You will play one round with no breaks, lasting about 8 minutes.</p>
         <p>When you are ready to start playing, place your fingers on the left, right, and up arrow keys as shown below, and press the up arrow key.</p>
         <img src='./assets/images/3_finger_keys.jpg' style='width:250px;'></img>`,

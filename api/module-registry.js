@@ -15,9 +15,9 @@ export const ModuleRegistryPILTWM = {
             { type: "instructions", config: { text: "break_message" } },
             { type: "task", name: "post_PILT_test"},
             { type: "task", name: "post_WM_test"},
-            { type: "bonus" },
+            { type: "points" },
         ],
-        max_bonus: 5.0,
-        min_prop_bonus: 0.6
+        min_points: 300,
+        max_points: 500
     }
 };

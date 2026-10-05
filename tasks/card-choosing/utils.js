@@ -416,7 +416,6 @@ function interBlockStimulus(settings){
     // Are there 50pence coins in the block?
     const feedbacks = jsPsych.data.get().filter({trial_type: "card-choosing", block: block}).select("feedback_right").values;
     const fifty = feedbacks.includes(0.5) || feedbacks.includes(-0.5);
-    console.log(fifty)
 
     // Find chosen outcomes for block
     let chosen_outcomes = jsPsych.data.get().filter({trial_type: "card-choosing",
@@ -444,9 +443,12 @@ function interBlockStimulus(settings){
         }
        
         
-        // Add rest to outcomes
-        Object.keys(last_trial.select('rest').values[0]).forEach(key => {
-            chosen_outcomes[key] += last_trial.select('rest').values[0][key];
+        // Add rest to outcomes. A coin type in the rest may not have been
+        // chosen yet this block, so default its count to zero (otherwise
+        // undefined + n gives NaN and the summary shows "£NaN").
+        const rest = last_trial.select('rest').values[0] ?? {};
+        Object.keys(rest).forEach(key => {
+            chosen_outcomes[key] = (chosen_outcomes[key] ?? 0) + rest[key];
         });
 
     }

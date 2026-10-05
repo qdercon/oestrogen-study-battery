@@ -28,7 +28,7 @@ The card-choosing task is a behavioral paradigm that implements both Pavlovian-I
   - Includes pavlovian test integration for PILT
   - Returns array of jsPsych trial objects for testing
   
-- **`computeRelativeCardChoosingBonus()`**: Calculates performance-based bonus payments
+- **`computeRelativeCardChoosingBonus()`**: Calculates the performance tally used for the final points score
   - Computes earned vs. theoretical min/max possible scores
   - Returns object with `{earned, min, max}` values
 
@@ -118,4 +118,4 @@ The task records detailed trial-by-trial data including:
 - Response times and feedback received
 - Block and trial numbers for analysis
 - Pavlovian stimulus exposure tracking
-- Performance metrics for bonus calculations
+- Performance metrics for the points calculation

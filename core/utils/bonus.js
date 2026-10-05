@@ -1,6 +1,6 @@
 /**
- * Bonus calculation utilities for experimental tasks
- * Handles bonus computation and payment tracking across different experimental modules
+ * Points calculation utilities for experimental tasks
+ * Tracks per-task performance tallies and converts them into a points score
  */
 
 import { flushData } from "./data-handling.js";
@@ -18,17 +18,13 @@ function roundDigits(value, digits = 2) {
 }
 
 /**
- * Computes the total bonus payment for the current task
- * Scales performance between minimum and maximum bonus amounts
- * @returns {number} Total bonus amount in GBP
+ * Computes the total points score for the module
+ * Scales performance between the module's minimum and maximum points
+ * @returns {number} Total points (integer)
  */
+function computeTotalPoints(module) {
 
-function computeTotalBonus(module) {
-
-    // Maximum bonus amounts for each task type
-    const min_bonus = module.max_bonus * module.min_prop_bonus;
-
-    // Initialize cumulative bonus values
+    // Initialize cumulative performance values
     let totalEarned = 0;
     let totalMin = 0;
     let totalMax = 0;
@@ -59,10 +55,10 @@ function computeTotalBonus(module) {
 
     // Calculate proportion of performance between min and max possible scores
     const prop = Math.max(0, Math.min(1, (totalEarned - totalMin) / (totalMax - totalMin)));
-    const totalBonus = prop * (module.max_bonus - min_bonus) + min_bonus;
+    const totalPoints = Math.round(prop * (module.max_points - module.min_points) + module.min_points);
 
-    // Add insurance to ensure bonus is never below minimum or NaN
-    return Number.isNaN(totalBonus) ? min_bonus : totalBonus;
+    // Add insurance to ensure points are never below minimum or NaN
+    return Number.isNaN(totalPoints) ? module.min_points : totalPoints;
 }
 
 /**
@@ -70,8 +66,8 @@ function computeTotalBonus(module) {
  *
  * computeBonus() is cumulative - it re-scans every trial of the task so far -
  * so the tally is replaced, not added to. (Accumulating would double-count on
- * every inter-block message.) This is informational only: the bonus actually
- * paid is recomputed from the trial data by computeTotalBonus().
+ * every inter-block message.) This is informational only: the points score
+ * shown is recomputed from the trial data by computeTotalPoints().
  */
 function updateBonusState(settings) {
     const taskBonus = settings.__task.computeBonus(settings) || { earned: 0, min: 0, max: 0 };
@@ -89,19 +85,14 @@ function updateBonusState(settings) {
 }
 
 /**
- * jsPsych trial configuration for displaying bonus payment information
- * Shows final bonus amount and handles bonus state updates
+ * jsPsych trial configuration for displaying the final points score
  */
-function bonusTrial(module) {
+function pointsTrial(module) {
     return {
         type: jsPsychHtmlKeyboardResponse,
         css_classes: ['instructions'],
         stimulus: function () {
-            const total_bonus = computeTotalBonus(module);
-            const formatted = total_bonus.toLocaleString('en-GB', {
-                style: 'currency',
-                currency: 'GBP'
-            });
+            const total_points = computeTotalPoints(module);
 
             // Laid out as its own block rather than through `.instructions p`,
             // whose fixed 700px left-aligned paragraphs left the heading
@@ -154,22 +145,22 @@ function bonusTrial(module) {
                 </style>
                 <div class="bonus-screen">
                     <div class="bonus-title">Thank you for completing this session!</div>
-                    <div class="bonus-lead">It is time to reveal your total bonus payment for this session.</div>
+                    <div class="bonus-lead">It is time to reveal your total score for this session.</div>
                     <div class="bonus-amount">
-                        <div class="bonus-amount-label">Altogether, you will earn an extra</div>
-                        <div class="bonus-amount-value">${formatted}</div>
+                        <div class="bonus-amount-label">Altogether, you scored</div>
+                        <div class="bonus-amount-value">${total_points} points</div>
                     </div>
                     <div class="bonus-footer">Please call the experimenter.</div>
                 </div>
             `;
     },
     choices: ['p'],
-    data: { trialphase: 'bonus_trial' },
+    data: { trialphase: 'points_trial' },
     on_start: () => {
-      const bonus = computeTotalBonus(module).toFixed(2);
+      const points = computeTotalPoints(module);
       
       jsPsych.data.addProperties({
-          bonus: bonus
+          points: points
       });
 
       flushData();
@@ -188,7 +179,7 @@ function bonusTrial(module) {
 // Export functions for use in other modules
 export {
     roundDigits,
-    computeTotalBonus,
+    computeTotalPoints,
     updateBonusState,
-    bonusTrial
+    pointsTrial
 };

@@ -1,4 +1,4 @@
-import { loadSequence, loadCSS, bonusTrial } from '@utils/index.js';
+import { loadSequence, loadCSS, pointsTrial } from '@utils/index.js';
 import { TaskRegistry, globalConfig, globalConfigOptions } from './task-registry.js';
 import { messages } from './messages.js';
 import { ModuleRegistryPILTWM } from './module-registry.js';
@@ -249,8 +249,8 @@ export async function createModuleTimeline(moduleName, config) {
         if (element.type === "instructions") {
             return getMessage(moduleName, element.config.text, { ...module.moduleConfig, ...element.config, ...config });
         }
-        if (element.type === "bonus") {
-            return bonusTrial(module);
+        if (element.type === "points") {
+            return pointsTrial(module);
         }
         return null;
     });

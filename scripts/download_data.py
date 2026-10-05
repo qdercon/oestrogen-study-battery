@@ -48,7 +48,7 @@ TRIAL_FIELD = re.compile(r"^trial_(\d+)$")
 META_FIELDS = {
     "participant_id", "session", "module", "firebase_uid", "task",
     "sitting_start_time", "started_at", "ended_at", "user_agent", "is_debug",
-    "expCompleted", "bonus", "bonus_state", "total_time", "n_warnings",
+    "expCompleted", "points", "bonus", "bonus_state", "total_time", "n_warnings",
     "last_state", "states",
 }
 

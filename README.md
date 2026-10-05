@@ -21,7 +21,7 @@ One sitting runs a single module, `oestrogen_battery`, defined in
 | 4 | Break | Experimenter-gated — press `c` to continue. |
 | 5 | **Post-PILT test** | 60 trials, 4 blocks. Cards from the learning phase re-paired, no feedback. |
 | 6 | **Post-WM test** | 28 trials, 1 block. Same idea for the WM stimuli. |
-| 7 | Bonus screen | Shows total bonus. Experimenter-gated — press `p` to finish. |
+| 7 | Points screen | Shows the participant's total points. Experimenter-gated — press `p` to finish. |
 
 A few behaviours worth knowing:
 
@@ -34,9 +34,10 @@ A few behaviours worth knowing:
 - **Response deadlines** are 4 s normally, extended to 6 s after a participant has
   accrued warnings. Missing the deadline triggers a "didn't catch a response"
   message; there's a cap of 3 such warnings per task.
-- **Bonus** is (currently) scaled between a £3.00 floor and a £5.00 maximum, based on where
-  total earnings fall between the minimum and maximum achievable across both tasks.
-  See `computeTotalBonus()` in [core/utils/bonus.js](core/utils/bonus.js).
+- **Points** — participants are not paid a performance bonus. Instead their coin
+  total is converted to a points score between 300 and 500, based on where total
+  earnings fall between the minimum and maximum achievable across both tasks.
+  See `computeTotalPoints()` in [core/utils/bonus.js](core/utils/bonus.js).
 
 ## The three sessions
 
@@ -51,7 +52,7 @@ as Session 1, 2 and 3:
 | Session 3 | `wk4` |
 
 The structure is identical across sessions — same tasks, same trial counts, same
-bonus scheme. What changes is the **stimuli and trial orderings**: each session has
+points scheme. What changes is the **stimuli and trial orderings**: each session has
 its own independently generated sequence files, so participants never re-learn the
 same card-outcome mappings.
 
@@ -104,7 +105,7 @@ Two magic strings in `participant_id` change behaviour ([experiment.html](experi
   run also skips the fullscreen switch, leaves refresh and right-click unblocked,
   and drops the experimenter-gated break screen.
 
-The bonus screen still waits for `p`, even when simulating. That keypress is what
+The points screen still waits for `p`, even when simulating. That keypress is what
 triggers `endExperiment()` — the CSV download and the final session write — so if you
 only wanted to watch the battery play through, close the tab instead and nothing is
 saved or downloaded.
@@ -131,7 +132,7 @@ Trials are written continuously, one document field per trial, keyed by zero-pad
 jsPsych trial index. Document IDs are the participant's anonymous auth UID.
 
 ```
-pilt-wm-main/tasks/session/{uid}     session metadata, bonus, completion flag
+pilt-wm-main/tasks/session/{uid}     session metadata, points, completion flag
 pilt-wm-main/tasks/PILT/{uid}        PILT learning trials
 pilt-wm-main/tasks/WM/{uid}          WM learning trials
 pilt-wm-main/tasks/other/{uid}       instructions, inter-block screens, etc.
@@ -207,9 +208,9 @@ need to change.
 
 ## Making changes
 
-- **Adjust trial counts, deadlines, or bonus** — [api/task-registry.js](api/task-registry.js)
-  (`defaultConfig` per task, plus `globalConfig` at the bottom) and `max_bonus` /
-  `min_prop_bonus` in [api/module-registry.js](api/module-registry.js).
+- **Adjust trial counts, deadlines, or points** — [api/task-registry.js](api/task-registry.js)
+  (`defaultConfig` per task, plus `globalConfig` at the bottom) and `min_points` /
+  `max_points` in [api/module-registry.js](api/module-registry.js).
 - **Change task order or add a task** — the `elements` array in
   [api/module-registry.js](api/module-registry.js).
 - **Change instruction or break text** — [api/messages.js](api/messages.js).

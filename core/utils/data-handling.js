@@ -83,7 +83,7 @@ async function endExperiment() {
     // Then close out the session document and wait for the server to confirm.
     const last = jsPsych.data.get().last(1);
     await finaliseSession({
-        bonus: last.select('bonus').values[0] ?? null,
+        points: last.select('points').values[0] ?? null,
         total_time: jsPsych.getTotalTime(),
         n_warnings: last.select('n_warnings').values[0] ?? 0
     });
